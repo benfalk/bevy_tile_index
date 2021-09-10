@@ -45,7 +45,7 @@ impl Tile {
     /// note the entity's index has changed
     ///
     pub fn remove(&mut self, index: usize) -> Option<Entity> {
-        if self.data.len() == 1 && index == 0 {
+        if self.data.len() - 1 == index {
             self.data.pop();
             None
         }
