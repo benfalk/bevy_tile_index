@@ -44,14 +44,30 @@ impl Index {
         }
     }
 
-    #[allow(unused_variables)]
     pub fn add_or_update_entity(&mut self, entity: &Entity, position: &Vec3) {
+        let board_index = self.board_index_for_vector(position);
         let Self { ref mut entity_lookup, ref mut board, .. } = self;
 
         match entity_lookup.get(entity) {
             None => {
+                let tile = board.tile_at_index_mut(board_index);
+                let tile_index = tile.add(*entity, *position);
+                entity_lookup.insert(*entity, EntityIndex { board_index, tile_index });
             },
-            Some(entity_index) => {
+            Some(same) if same.board_index == board_index => {
+                let tile = board.tile_at_index_mut(board_index);
+                tile.update_position(same.tile_index, *position);
+            },
+            Some(diff) => {
+                let tile = board.tile_at_index_mut(diff.board_index);
+                if let Some(displaced) = tile.remove(diff.tile_index) {
+                    entity_lookup.get_mut(&displaced).unwrap().tile_index = diff.tile_index;
+                }
+                let new_tile = board.tile_at_index_mut(board_index);
+                let tile_index = new_tile.add(*entity, *position);
+                let lookup = entity_lookup.get_mut(entity).unwrap();
+                lookup.board_index = board_index;
+                lookup.tile_index = tile_index;
             }
         }
     }
@@ -107,5 +123,10 @@ mod tests {
             index.board_index_for_vector(&end_of_world),
             64 * 64 - 1
         )
+    }
+
+    #[test]
+    fn adding_entities_works() {
+        // TODO: Write these tests
     }
 }
