@@ -7,8 +7,8 @@ use bevy::ecs::entity::Entity;
 
 #[derive(Copy, Clone)]
 pub struct EntityPosition {
-    pub(crate) entity: Entity,
-    pub(crate) position: Vec3,
+    pub entity: Entity,
+    pub position: Vec3,
 }
 
 #[derive(Clone)]

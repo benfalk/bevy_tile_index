@@ -1,11 +1,10 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
-
 use bevy::math::Vec3;
 use bevy::ecs::entity::Entity;
 use std::collections::HashMap;
 use crate::board::Board;
-
+use crate::coord::{Coord, SurroundingCoords};
+use crate::tile::{EntityPosition, Tile};
+use std::slice::Iter;
 
 type EntityLookup = HashMap<Entity, EntityIndex>;
 
@@ -15,12 +14,22 @@ struct EntityIndex{
     tile_index: usize,
 }
 
+#[allow(dead_code)]
 pub struct Index {
     entity_lookup: EntityLookup,
     board: Board,
     unit_size: usize,
+    subsection_size: usize,
     cell_shift: usize,
     y_shift: usize,
+}
+
+#[allow(dead_code)]
+pub struct SurroundingEntites<'a> {
+    index: &'a Index,
+    coords: SurroundingCoords,
+    entities: Iter<'a, EntityPosition>,
+    radius: f32,
 }
 
 impl Index {
@@ -58,8 +67,9 @@ impl Index {
 
         Self {
             entity_lookup: EntityLookup::with_capacity(200),
-            board: Board::new(subsection_size, subsection_size),
+            board: Board::new(subsection_size),
             unit_size,
+            subsection_size,
             cell_shift,
             y_shift,
         }
@@ -116,10 +126,52 @@ impl Index {
         }
     }
 
+    pub fn nearby_entities(&self, position: &Vec3, radius: f32) -> SurroundingEntites {
+        let y = position.y as usize >> self.cell_shift;
+        let x = position.x as usize >> self.cell_shift;
+        let distance = ((radius as usize) >> self.cell_shift) + 1;
+        let mut coords = Coord::new(x, y).surrounding_coords(distance, self.subsection_size - 1);
+        let entities = coords.next().unwrap().tile(self).iter();
+
+        SurroundingEntites {
+            index: self,
+            coords,
+            entities,
+            radius,
+        }
+    }
+
     fn board_index_for_vector(&self, position: &Vec3) -> usize {
         let y = position.y as usize >> self.cell_shift;
         let x = position.x as usize >> self.cell_shift;
         x + (y << self.y_shift)
+    }
+}
+
+impl Coord {
+    fn tile<'a, 'b>(&'a self, index: &'b Index) -> &'b Tile {
+        let idx = self.x + (self.y << index.y_shift);
+        index.board.tile_at_index(idx)
+    }
+}
+
+impl<'a> Iterator for SurroundingEntites<'a> {
+    type Item = &'a EntityPosition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let next = self.entities.next();
+
+            // TODO: Range Check
+            if next.is_some() { return next; }
+
+            if let Some(coord) = self.coords.next() {
+                self.entities = coord.tile(self.index).iter();
+            }
+            else{
+                return None;
+            }
+        }
     }
 }
 
@@ -274,6 +326,43 @@ mod tests {
 
         assert_eq!(
             index.board.tile_at_index(new_idx).iter().count(),
+            0
+        );
+    }
+
+    #[test]
+    fn nearby_entities() {
+        let mut index = Index::new(4096, 64);
+        let entity_1 = Entity::new(1);
+        let entity_2 = Entity::new(2);
+        let entity_3 = Entity::new(3);
+        let somewhere = Vec3::new(196.0, 196.0, 12.0);
+        let somewhere_a_little_different = Vec3::new(200.0, 200.0, 42.0);
+        let somewhere_new = Vec3::new(2000.0, 2000.0, 13.0);
+
+        index.add_or_update_entity(&entity_1, &somewhere);
+        index.add_or_update_entity(&entity_2, &somewhere);
+        index.add_or_update_entity(&entity_3, &somewhere_new);
+
+        assert_eq!(
+            index.nearby_entities(&somewhere, 60.0).count(),
+            2
+        );
+
+        assert_eq!(
+            index.nearby_entities(&somewhere_new, 60.0).count(),
+            1
+        );
+
+        index.add_or_update_entity(&entity_3, &somewhere_a_little_different);
+
+        assert_eq!(
+            index.nearby_entities(&somewhere, 60.0).count(),
+            3
+        );
+
+        assert_eq!(
+            index.nearby_entities(&somewhere_new, 60.0).count(),
             0
         );
     }
